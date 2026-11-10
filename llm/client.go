@@ -21,7 +21,6 @@ type Client struct {
 
 func New(cfg config.Config) *Client {
 	opts := []option.RequestOption{}
-
 	if cfg.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}

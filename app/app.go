@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"go-rag/chat"
 	"go-rag/config"
 	"go-rag/llm"
 )

@@ -23,7 +23,7 @@ func Load() Config {
 	}
 
 	if cfg.BaseURL == "" {
-		cfg.BaseURL = "https://api/openai.com/v1"
+		cfg.BaseURL = "https://api.openai.com/v1"
 	}
 
 	if cfg.Model == "" {
