@@ -114,13 +114,13 @@ func (s *Store) Upsert(ctx context.Context, docs []vector.Document) error {
 
 	defer tx.Rollback(ctx)
 
-	const stm = `
-		INSERT INTO documents(id, content, metadata, embedding)
-		VALUES($1, $2, %3, %4)
+	const stmt = `
+		INSERT INTO documents (id, content, metadata, embedding)
+		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (id) DO UPDATE SET
 			content = EXCLUDED.content,
 			metadata = EXCLUDED.metadata,
-			embedding = EXCLUDED.embedding,
+			embedding = EXCLUDED.embedding
 	`
 
 	for _, d := range docs {
@@ -128,7 +128,7 @@ func (s *Store) Upsert(ctx context.Context, docs []vector.Document) error {
 		if err != nil {
 			return fmt.Errorf("metadata for %s: %w", d.ID, err)
 		}
-		if _, err := tx.Exec(ctx, stm, d.ID, d.Content, meta, pgvector.NewVector(d.Embedding)); err != nil {
+		if _, err := tx.Exec(ctx, stmt, d.ID, d.Content, meta, pgvector.NewVector(d.Embedding)); err != nil {
 			return fmt.Errorf("upsert %s: %w", d.ID, err)
 
 		}
