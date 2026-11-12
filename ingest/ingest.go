@@ -7,7 +7,7 @@
 // 4) DELETE
 // 5) UPSERT
 
-package chunk
+package ingest
 
 import (
 	"context"
