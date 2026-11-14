@@ -159,7 +159,7 @@ func (s *Store) Query(ctx context.Context, embedding []float32, topK int) ([]vec
 	}
 
 	const stmt = `
-		SELECT id, content, metadat, embedding <=> $1 as distance 
+		SELECT id, content, metadata, embedding <=> $1 as distance 
 		FROM documents
 		order by embedding <=> $1
 		limit $2

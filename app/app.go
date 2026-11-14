@@ -6,6 +6,7 @@ import (
 	"go-rag/config"
 	"go-rag/ingest"
 	"go-rag/llm"
+	"go-rag/rag"
 	"go-rag/vector"
 	"go-rag/vector/pgvector"
 	"log"
@@ -51,7 +52,16 @@ func Run(parent context.Context, cfg config.Config) error {
 		})
 	}
 
-	replErr := chat.RunREPL(ctx, client, chat.Options{
+	// get a retriever and a rewriter
+	var retriever *rag.Retriever
+	if store != nil {
+		retriever = rag.New(embedder, store, rag.Options{
+			TopK:     5,
+			Rewriter: rag.NewRewriter(client),
+		})
+	}
+
+	replErr := chat.RunREPL(ctx, client, retriever, chat.Options{
 		SystemPromptFile: cfg.SystemPromptFile,
 	})
 
