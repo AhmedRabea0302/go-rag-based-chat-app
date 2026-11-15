@@ -6,14 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go-rag/ingest"
 	"go-rag/llm"
 	"go-rag/rag"
 	"go-rag/vector"
 	"html/template"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,6 +27,13 @@ import (
 //go:embed templates/*.gohtml
 var templatesFs embed.FS
 
+const maxUploadBytes = 10 << 20
+
+type uploadResponse struct {
+	Source string `json:"source"`
+	Bytes  int    `json:"bytes"`
+	Chunks int    `json:"chunks"`
+}
 type Options struct {
 	Addr             string
 	SystemPromptFile string
@@ -75,6 +85,8 @@ func (s *Server) Routes() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Get("/chat", s.handleChatPage)
 	r.Post("/api/chat/stream", s.handleChatStream)
+	r.Post("/api/upload", s.handleUpload)
+
 	return r
 }
 
@@ -107,6 +119,62 @@ func (s *Server) Run(ctx context.Context, addr string) error {
 
 type chatRequest struct {
 	Messages []llm.Message `json:"messages"`
+}
+
+func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		http.Error(w, "ingest is not configured (no vector store)", http.StatusServiceUnavailable)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		http.Error(w, "uploaded too large file: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file field: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	name := filepath.Base(header.Filename)
+	if !ingest.IsSupported(name) {
+		http.Error(w, "unsupported format: ", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "read upload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	chunks, err := ingest.ProcessContent(r.Context(), name, content, ingest.Options{}, s.embedder, s.store)
+	if err != nil {
+		log.Printf("[web] upload ingest failed for %q: %v", name, err)
+		http.Error(w, "ingest failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if s.processDir != "" {
+		dist := filepath.Join(s.processDir, name)
+		if err := os.MkdirAll(s.processDir, 0o755); err != nil {
+			log.Printf("[web] mkdir %s: %v", s.processDir, err)
+		} else if err := os.WriteFile(dist, content, 0o644); err != nil {
+			log.Printf("[wev] archive %s: %s", dist, err)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(uploadResponse{
+		Source: name,
+		Bytes:  len(content),
+		Chunks: chunks,
+	})
 }
 
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
